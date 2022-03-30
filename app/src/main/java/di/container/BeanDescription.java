@@ -1,144 +1,128 @@
 package di.container;
 
-import di.container.beanproperty.BeanProperty;
+import di.container.beaninstance.BeanInstance;
+import di.container.beaninstance.PrototypeInstance;
+import di.container.beaninstance.SingletonInstance;
+import di.container.beaninstance.ThreadInstance;
+import di.container.dependency.Dependency;
+import di.container.dependency.InjectableConstructor;
+import di.container.dependency.InjectableMethod;
+
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class BeanDescription {
+    private final BeanLifecycle beanLifecycle;
+    private final Class<?> clazz;
+    private final List<InjectableConstructor> constructorArgs;
+    private final List<InjectableMethod> injectableMethods;
+    private List<Dependency> fieldDependencies;
+    private BeanInstance beanInstance;
 
     public BeanDescription(BeanLifecycle beanLifecycle, Class<?> clazz,
-                           boolean isProxy, List<BeanProperty> constructorArgs, List<BeanProperty> setterArgs) {
+                           List<InjectableConstructor> constructorArgs, List<Dependency> fieldDependencies,
+                           List<InjectableMethod> injectableMethods) {
         this.beanLifecycle = beanLifecycle;
+        beanInstance = switch (beanLifecycle) {
+            case THREAD -> new ThreadInstance();
+            case PROTOTYPE -> new PrototypeInstance();
+            case SINGLETON -> new SingletonInstance();
+        };
         this.clazz = clazz;
-        this.isProxy = isProxy;
         this.constructorArgs = constructorArgs;
-        this.setterArgs = setterArgs;
-    }
-
-    private BeanLifecycle beanLifecycle;
-
-    private Class<?> clazz;
-
-    private Object instance;
-
-    private boolean isProxy;
-
-    private List<BeanProperty> constructorArgs = new ArrayList<>();
-
-    private List<BeanProperty> setterArgs = new ArrayList<>();
-
-    private BeanLifecycle getBeanLifecycle() {
-        return beanLifecycle;
+        this.injectableMethods = injectableMethods;
+        this.fieldDependencies = fieldDependencies;
     }
 
     public Class<?> getClazz() {
         return clazz;
     }
 
-    private Object getInstance() {
-        return instance;
-    }
-
-    public boolean isProxy() {
-        return isProxy;
-    }
-
-    public List<BeanProperty> getConstructorArgs() {
-        return constructorArgs;
-    }
-
-    private void setInstance(Object instance) {
-        this.instance = instance;
-    }
-
-    public List<BeanProperty> getSetterArgs() {
-        return setterArgs;
-    }
-
-    public void setBeanLifecycle(BeanLifecycle beanLifecycle) {
-        this.beanLifecycle = beanLifecycle;
-    }
-
-    public void setClazz(Class<?> clazz) {
-        this.clazz = clazz;
-    }
-
-    public void setProxy(boolean proxy) {
-        isProxy = proxy;
-    }
-
     public Object getBean() throws DIContainerException {
-        Object bean;
-        switch (getBeanLifecycle()) {
-            case SINGLETON -> {
-                if (getInstance() == null) {
-                    setInstance(generateBean());
-                }
-                bean = getInstance();
-            }
-            case PROTOTYPE -> bean = generateBean();
-            case THREAD -> throw new DIContainerException("I don't know what is that yet");
-            default -> throw new DIContainerException("Unknown lifecycle");
+        Object bean = beanInstance.get();
+        if (bean == null) {
+            bean = generateBean();
+            beanInstance.put(bean);
         }
         return bean;
     }
 
     private Object generateBean() throws DIContainerException {
-        var constr = getConstructor();
-        Object object = null;
+        Object object;
+        if (constructorArgs.size() != 1) {
+            throw new DIContainerException(
+                    "Illegal injectable constructor count (" + constructorArgs.size() + ") for " + clazz);
+        }
+
         try {
-            List<Object> args = new ArrayList<>(); // todo what to do about this
-            for (var arg : getConstructorArgs()) {
+            List<Object> args = new ArrayList<>();
+            for (Dependency arg : constructorArgs.get(0).getArguments()) {
                 args.add(arg.getBean());
             }
-            object = constr.newInstance(args.toArray());
+            object = getConstructor().newInstance(args.toArray());
         } catch (IllegalAccessException | InstantiationException | InvocationTargetException e) {
             throw new DIContainerException("Unable to instantiate bean");
         }
-
-        for (var arg : getSetterArgs()) {
-            String name = "set" + arg.getFieldName().substring(0, 1).toUpperCase() + arg.getFieldName().substring(1);
+        for (InjectableMethod injectableMethod : injectableMethods) {
+            String name = injectableMethod.getMethodName();
             Method method;
+            List<Class<?>> classes = injectableMethod.getArguments().stream().map(Dependency::getClazz)
+                    .collect(Collectors.toList());
             try {
-                method = getClazz().getMethod(name, arg.getClazz());
+                method = getClazz().getDeclaredMethod(name, classes.toArray(new Class<?>[0]));
             } catch (NoSuchMethodException e) {
                 throw new DIContainerException("No setter");
             }
-
             try {
-                method.invoke(object, arg.getBean());
+                method.setAccessible(true);
+                List<Object> args = new ArrayList<>();
+                for (Dependency arg : injectableMethod.getArguments()) {
+                    args.add(arg.getBean());
+                }
+                method.invoke(object, args.toArray());
             } catch (IllegalAccessException | InvocationTargetException e) {
                 e.printStackTrace();
             }
         }
-
+        for (Dependency entry : fieldDependencies) {
+            try {
+                Field field = getClazz().getDeclaredField(entry.getFieldName());
+                field.setAccessible(true);
+                field.set(object, entry.getBean());
+            } catch (NoSuchFieldException | IllegalAccessException e) {
+                throw new DIContainerException(
+                        "Field \"" + entry.getFieldName() + "\n not found in class \"" + getClazz().getName()
+                                + "\"");
+            }
+        }
         return object;
     }
 
-    private Constructor<?> getConstructor() {
-        var constructors = getClazz().getConstructors();
-
+    private Constructor<?> getConstructor() throws DIContainerException {
         Constructor<?> constr = null;
-
-        for (var constructor : constructors) {
+        for (Constructor<?> constructor : clazz.getConstructors()) {
             if (constructor.isVarArgs()) {
                 // ... TODO
-            } else {
-                if (isMatchingConstructor(constructor, getConstructorArgs())) {
-                    constr = constructor;
-                    break;
-                }
+            } else if (isMatchingConstructor(constructor, constructorArgs.get(0).getArguments())) {
+                constr = constructor;
+                break;
             }
         }
 
+        if (constr == null) {
+            throw new DIContainerException(
+                    "No matching constructor: " + clazz + "; accepting " + constructorArgs.get(0)
+                            .getArguments().stream().map(Dependency::getClazz).collect(Collectors.toList()));
+        }
         return constr;
     }
 
-    private boolean isMatchingConstructor(Constructor<?> constructor, List<BeanProperty> args) {
+    private boolean isMatchingConstructor(Constructor<?> constructor, List<Dependency> args) {
         if (constructor.getParameterCount() != args.size()) {
             return false;
         }

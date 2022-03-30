@@ -1,25 +1,24 @@
-package di.jsonparser.objects;
+package di.beanparser.objects;
 
 import java.util.Arrays;
 
 public class Bean {
-
     private String id;
     private String className;
     private String lifecycle = "singleton";
-    private boolean proxy = false;
     private Argument[] constructorArguments;
     private Argument[] setterArguments;
+    private Argument[] fields;
 
     @Override
     public String toString() {
-        return "BeanJson{" +
+        return "Bean{" +
                 "id='" + id + '\'' +
                 ", className='" + className + '\'' +
                 ", lifecycle='" + lifecycle + '\'' +
-                ", proxy=" + proxy +
                 ", constructorArguments=" + Arrays.toString(constructorArguments) +
                 ", setterArguments=" + Arrays.toString(setterArguments) +
+                ", fields=" + Arrays.toString(fields) +
                 '}';
     }
 
@@ -35,9 +34,6 @@ public class Bean {
         return lifecycle;
     }
 
-    public boolean isProxy() {
-        return proxy;
-    }
 
     public Argument[] getConstructorArguments() {
         return constructorArguments;
@@ -45,5 +41,9 @@ public class Bean {
 
     public Argument[] getSetterArguments() {
         return setterArguments;
+    }
+
+    public Argument[] getFields() {
+        return fields;
     }
 }

@@ -7,27 +7,38 @@
         {
           "ref": "fullNameJohn"
         }, {
-          "fieldName": "gender",
           "className": "java.lang.String",
           "value": "F"
+        }, {
+          "className": "di.jsonparser.IPassport",
+          "provider": true
         }
       ],
       "setterArguments": [
         {
           "fieldName": "age",
-          "className": "java.lang.String",
-          "value": 30
+          "className": "int",
+          "value": "30"
         }, {
           "fieldName": "gender",
           "className": "java.lang.String",
           "value": "M"
+        }, {
+          "fieldName": "car",
+          "className": "di.jsonparser.ICar"
+        }
+      ],
+      "fields": [
+        {
+          "fieldName": "height",
+          "className": "java.lang.String",
+          "value": "179"
         }
       ]
     }, {
       "id": "fullNameJohn",
       "className": "di.jsonparser.FullName",
       "lifecycle": "prototype",
-      "proxy": true,
       "constructorArguments": [
         {
           "className": "java.lang.String",
@@ -54,6 +65,23 @@
               }
             ]
           }
+        }
+      ]
+    }, {
+      "className": "di.jsonparser.Car",
+      "constructorArguments": [
+        {
+          "className": "java.lang.String",
+          "value": "Super Car"
+        }
+      ]
+    }, {
+      "className": "di.jsonparser.RussianPassport",
+      "lifecycle": "prototype",
+      "constructorArguments": [
+        {
+          "className": "java.lang.String",
+          "value": "2281488666"
         }
       ]
     }

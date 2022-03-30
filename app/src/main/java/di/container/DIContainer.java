@@ -8,4 +8,6 @@ public interface DIContainer {
     Object getBean(String name) throws DIContainerException;
 
     Collection<String> getBeans();
+
+    <T> T getBean(Class<T> clazz) throws DIContainerException;
 }
